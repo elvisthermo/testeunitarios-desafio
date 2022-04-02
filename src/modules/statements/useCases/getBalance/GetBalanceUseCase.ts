@@ -6,7 +6,7 @@ import { IStatementsRepository } from "../../repositories/IStatementsRepository"
 import { GetBalanceError } from "./GetBalanceError";
 
 interface IRequest {
-  user_id: string;
+  user_id: any;
 }
 
 interface IResponse {
