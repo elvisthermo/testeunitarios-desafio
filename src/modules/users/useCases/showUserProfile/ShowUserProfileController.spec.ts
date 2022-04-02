@@ -1,48 +1,72 @@
-import { InMemoryUsersRepository } from "../../repositories/in-memory/InMemoryUsersRepository";
-import { CreateUserUseCase } from "../createUser/CreateUserUseCase";
-import { ICreateUserDTO } from "../createUser/ICreateUserDTO";
-import { ShowUserProfileError } from "./ShowUserProfileError";
-import { ShowUserProfileUseCase } from "./ShowUserProfileUseCase";
+import request from "supertest";
+import { Connection } from "typeorm";
+import createConnection from "../../../../database";
 
-let createUserUseCase: CreateUserUseCase;
-let inMemoryUsersRepository: InMemoryUsersRepository;
-let showUserProfileUseCase: ShowUserProfileUseCase;
+import { app } from "../../../../app";
 
-describe("Show user profile", () => {
-  beforeEach(() => {
-    inMemoryUsersRepository = new InMemoryUsersRepository();
-    createUserUseCase = new CreateUserUseCase(inMemoryUsersRepository);
-    showUserProfileUseCase = new ShowUserProfileUseCase(
-      inMemoryUsersRepository
-    );
+let connection: Connection;
+
+describe("Show User Profile Controller", () => {
+  beforeAll(async () => {
+    connection = await createConnection();
+    await connection.runMigrations();
   });
 
-  it("Should be able to show a user profile", async () => {
-    const user = await createUserUseCase.execute({
-      name: "Marcelo Marçal",
-      email: "marcelo@gmail.com",
+  afterAll(async () => {
+    await connection.dropDatabase();
+    await connection.close();
+  });
+
+  it("should be able to show a user profile", async () => {
+    await request(app).post("/api/v1/users").send({
+      name: "Lorenzo Marcelo",
+      email: "lorenzo@gmail.com",
       password: "12345",
     });
 
-    const user_id = user.id;
+    const user = await request(app).post("/api/v1/sessions").send({
+      email: "lorenzo@gmail.com",
+      password: "12345",
+    });
 
-    const result = await showUserProfileUseCase.execute(user_id);
+    const { token } = user.body;
 
-    expect(result).toEqual(
-      expect.objectContaining({
-        id: result.id,
-        name: "Marcelo Marçal",
-        email: "marcelo@gmail.com",
-        password: result.password,
-      })
-    );
+    const response = await request(app)
+      .get("/api/v1/profile")
+      .set({
+        Authorization: `Bearer ${token}`,
+      });
+
+    expect(response.body).toHaveProperty("id");
+    expect(response.body).toHaveProperty("name");
+    expect(response.body).toHaveProperty("email");
+    expect(response.body.id).toBe(user.body.user.id);
+    expect(response.body.name).toBe(user.body.user.name);
+    expect(response.body.email).toBe(user.body.user.email);
   });
 
-  it("Should not be able to show a user profile of an nonexistent user", async () => {
-    const user_id = "561616165ds165ds16sd1sad61ds65sad";
+  it("should not be able to show a nonexistent user profile", async () => {
+    await request(app).post("/api/v1/users").send({
+      name: "Jose",
+      email: "jose@gmail.com",
+      password: "12345",
+    });
 
-    await expect(showUserProfileUseCase.execute(user_id)).rejects.toEqual(
-      new ShowUserProfileError()
-    );
+    const authResponse = await request(app).post("/api/v1/sessions").send({
+      email: "jose@gmail.com",
+      password: "12345",
+    });
+
+    const { token, user } = authResponse.body;
+
+    await connection.query(`DELETE FROM users WHERE id = '${user.id}'`);
+
+    const response = await request(app)
+      .get("/api/v1/profile")
+      .set({
+        Authorization: `Bearer ${token}`,
+      });
+
+    expect(response.status).toBe(404);
   });
 });

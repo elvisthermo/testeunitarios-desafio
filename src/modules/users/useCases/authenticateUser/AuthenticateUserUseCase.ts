@@ -11,7 +11,7 @@ import { IncorrectEmailOrPasswordError } from "./IncorrectEmailOrPasswordError";
 interface IRequest {
   email: string;
   password: string;
-}
+} 
 
 @injectable()
 export class AuthenticateUserUseCase {

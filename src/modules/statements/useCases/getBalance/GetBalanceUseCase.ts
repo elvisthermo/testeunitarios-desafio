@@ -6,7 +6,7 @@ import { IStatementsRepository } from "../../repositories/IStatementsRepository"
 import { GetBalanceError } from "./GetBalanceError";
 
 interface IRequest {
-  user_id: any;
+  user_id: string;
 }
 
 interface IResponse {
@@ -35,6 +35,8 @@ export class GetBalanceUseCase {
       user_id,
       with_statement: true
     });
+
+    // console.log('balance', balance);
 
     return balance as IResponse;
   }

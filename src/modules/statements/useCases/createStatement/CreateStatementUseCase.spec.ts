@@ -1,91 +1,198 @@
-import { InMemoryUsersRepository } from "../../../users/repositories/in-memory/InMemoryUsersRepository";
-import { IUsersRepository } from "../../../users/repositories/IUsersRepository";
-import { OperationType } from "../../entities/Statement";
-import { InMemoryStatementsRepository } from "../../repositories/in-memory/InMemoryStatementsRepository";
-import { IStatementsRepository } from "../../repositories/IStatementsRepository";
-import { CreateStatementError } from "./CreateStatementError";
+import { v4 as uuidv4 } from "uuid";
+
+import { InMemoryStatementsRepository } from "@modules/statements/repositories/in-memory/InMemoryStatementsRepository";
+import { InMemoryUsersRepository } from "@modules/users/repositories/in-memory/InMemoryUsersRepository";
+import { CreateUserUseCase } from "@modules/users/useCases/createUser/CreateUserUseCase";
 import { CreateStatementUseCase } from "./CreateStatementUseCase";
 
-let usersRepository: IUsersRepository;
-let statementsRepository: IStatementsRepository;
+import { OperationType } from "../../entities/Statement";
+import { CreateStatementError } from "./CreateStatementError";
+
+let createUserUseCase: CreateUserUseCase;
+let inMemoryUsersRepository: InMemoryUsersRepository;
+let inMemoryStatementsRepository: InMemoryStatementsRepository;
 let createStatementUseCase: CreateStatementUseCase;
 
-describe("CreateStatementUseCase", () => {
+describe("Post statement", () => {
   beforeEach(() => {
-    usersRepository = new InMemoryUsersRepository();
-    statementsRepository = new InMemoryStatementsRepository();
+    inMemoryUsersRepository = new InMemoryUsersRepository();
+    inMemoryStatementsRepository = new InMemoryStatementsRepository();
+    createUserUseCase = new CreateUserUseCase(inMemoryUsersRepository);
     createStatementUseCase = new CreateStatementUseCase(
-      usersRepository,
-      statementsRepository
+      inMemoryUsersRepository,
+      inMemoryStatementsRepository
     );
   });
 
-  it("should be able to create a deposit statement", async () => {
-    const user = await usersRepository.create({
-      email: "test@gmail.com",
-      name: "testes",
-      password: "1234",
+  it("Should be able to do a deposit", async () => {
+    const user = await createUserUseCase.execute({
+      name: "Marcelo Marçal",
+      email: "marcelo@gmail.com",
+      password: "12345",
     });
 
-    const response = await createStatementUseCase.execute({
-      amount: 100,
-      description: "test",
-      type: OperationType.DEPOSIT,
-      user_id: user.id as string,
+    const result = await createStatementUseCase.execute({
+      user_id: user.id,
+      amount: 4000,
+      description: "income",
+      type: "deposit" as OperationType,
     });
 
-    expect(response).toHaveProperty("id");
+    expect(result).toEqual(
+      expect.objectContaining({
+        user_id: result.user_id,
+        amount: result.amount,
+        description: result.description,
+        type: result.type,
+      })
+    );
   });
 
-  it("should be able to create a withdraw statement", async () => {
-    const user = await usersRepository.create({
-      email: "test@gmail.com",
-      name: "testes",
-      password: "1234",
+  it("Should be able to do a withdraw", async () => {
+    const user = await createUserUseCase.execute({
+      name: "Marcelo Marçal",
+      email: "marcelo@gmail.com",
+      password: "12345",
     });
 
     await createStatementUseCase.execute({
-      amount: 101,
-      description: "test",
-      type: OperationType.DEPOSIT,
-      user_id: user.id as string,
+      user_id: user.id,
+      amount: 4000,
+      description: "income",
+      type: "deposit" as OperationType,
     });
 
-    const response = await createStatementUseCase.execute({
-      amount: 100,
-      description: "test",
-      type: OperationType.WITHDRAW,
-      user_id: user.id as string,
+    const result = await createStatementUseCase.execute({
+      user_id: user.id,
+      amount: 2000,
+      description: "rental",
+      type: "withdraw" as OperationType,
     });
 
-    expect(response).toHaveProperty("id");
+    expect(result).toEqual(
+      expect.objectContaining({
+        user_id: result.user_id,
+        amount: result.amount,
+        description: result.description,
+        type: result.type,
+      })
+    );
   });
 
-  it("should not be able to create a withdraw statement with funds", async () => {
-    const user = await usersRepository.create({
-      email: "test@gmail.com",
-      name: "testes",
-      password: "1234",
+  it("Should not be able to do a statement with nonexistent user", async () => {
+    await expect(
+      createStatementUseCase.execute({
+        user_id: "16161651651465161",
+        amount: 2000,
+        description: "rental",
+        type: "withdraw" as OperationType,
+      })
+    ).rejects.toEqual(new CreateStatementError.UserNotFound());
+  });
+
+  it("Should not be able to do a withdraw with insufficient fund", async () => {
+    const user = await createUserUseCase.execute({
+      name: "Marcelo Marçal",
+      email: "marcelo@gmail.com",
+      password: "12345",
     });
 
     await expect(
       createStatementUseCase.execute({
-        amount: 100,
-        description: "test",
-        type: OperationType.WITHDRAW,
-        user_id: user.id as string,
+        user_id: user.id,
+        amount: 2000,
+        description: "rental",
+        type: "withdraw" as OperationType,
       })
-    ).rejects.toBeInstanceOf(CreateStatementError.InsufficientFunds);
+    ).rejects.toEqual(new CreateStatementError.InsufficientFunds());
   });
 
-  it("should not be able to create a statement with a non-existent user", async () => {
+  it("Should be able to do a transfer", async () => {
+    const user = await createUserUseCase.execute({
+      name: "Marcelo Marçal",
+      email: "marcelo@gmail.com",
+      password: "12345",
+    });
+
+    const receiver_user = await createUserUseCase.execute({
+      name: "Sandro",
+      email: "sandro@gmail.com",
+      password: "12345",
+    });
+
+    await createStatementUseCase.execute({
+      user_id: user.id,
+      amount: 5000,
+      description: "income",
+      type: "deposit" as OperationType,
+    });
+
+    const result = await createStatementUseCase.execute({
+      user_id: user.id,
+      receiver_user_id: receiver_user.id,
+      amount: 3000,
+      description: "payment",
+      type: "transfer" as OperationType,
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        user_id: result.user_id,
+        amount: result.amount,
+        description: result.description,
+        type: result.type,
+      })
+    );
+  });
+
+  it("Should not be able to do a transfer with insufficient fund", async () => {
+    const user = await createUserUseCase.execute({
+      name: "Marcelo Marçal",
+      email: "marcelo@gmail.com",
+      password: "12345",
+    });
+
+    const receiver_user = await createUserUseCase.execute({
+      name: "Sandro",
+      email: "sandro@gmail.com",
+      password: "12345",
+    });
+
     await expect(
       createStatementUseCase.execute({
-        amount: 100,
-        description: "test",
-        type: OperationType.WITHDRAW,
-        user_id: "non-existent",
+        user_id: user.id,
+        receiver_user_id: receiver_user.id,
+        amount: 3000,
+        description: "payment",
+        type: "transfer" as OperationType,
       })
-    ).rejects.toBeInstanceOf(CreateStatementError.UserNotFound);
+    ).rejects.toEqual(new CreateStatementError.InsufficientFunds());
+  });
+
+  it("Should not be able to do a transfer for a nonexistent receiver user", async () => {
+    const user = await createUserUseCase.execute({
+      name: "Marcelo Marçal",
+      email: "marcelo@gmail.com",
+      password: "12345",
+    });
+
+    await createStatementUseCase.execute({
+      user_id: user.id,
+      amount: 5000,
+      description: "income",
+      type: "deposit" as OperationType,
+    });
+
+    const receiver_user = uuidv4();
+
+    await expect(
+      createStatementUseCase.execute({
+        user_id: user.id,
+        receiver_user_id: receiver_user,
+        amount: 3000,
+        description: "payment",
+        type: "transfer" as OperationType,
+      })
+    ).rejects.toEqual(new CreateStatementError.ReceiverUserNotFound());
   });
 });
